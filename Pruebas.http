@@ -1,0 +1,49 @@
+@host = https://localhost:5001
+
+### 1. Comprobar API
+GET {{host}}/
+Accept: text/plain
+
+### 2. Obtener personajes
+GET {{host}}/personajes/
+Accept: application/json
+
+### 3. Obtener personaje por ID
+GET {{host}}/personajes/1
+Accept: application/json
+
+### 4. Filtrar personajes
+GET {{host}}/personajes/?faccion=Imperio&fuerzaSensitivo=true
+Accept: application/json
+
+### 5. Ranking por poder
+GET {{host}}/personajes/ranking?por=poder
+Accept: application/json
+
+### 6. Eventos de un personaje
+GET {{host}}/personajes/1/eventos
+Accept: application/json
+
+### 7. Obtener cartas
+GET {{host}}/cartas/
+Accept: application/json
+
+### 8. Obtener carta
+GET {{host}}/cartas/1
+Accept: application/json
+
+### 9. Obtener eventos
+GET {{host}}/eventos/
+Accept: application/json
+
+### 10. Obtener evento
+GET {{host}}/eventos/1
+Accept: application/json
+
+### 11. MVP
+GET {{host}}/eventos/1/mvp
+Accept: application/json
+
+### 12. Simulación
+POST {{host}}/eventos/1/simular
+Accept: application/json
