@@ -33,3 +33,4 @@ C:\Users\GABRIEL\CatalogoGalactico\obj\Debug\net10.0\refint\CatalogoGalactico.dl
 C:\Users\GABRIEL\CatalogoGalactico\obj\Debug\net10.0\CatalogoGalactico.pdb
 C:\Users\GABRIEL\CatalogoGalactico\obj\Debug\net10.0\CatalogoGalactico.genruntimeconfig.cache
 C:\Users\GABRIEL\CatalogoGalactico\obj\Debug\net10.0\ref\CatalogoGalactico.dll
+C:\Users\GABRIEL\CatalogoGalactico\obj\Debug\net10.0\CatalogoGalactico.sourcelink.json
