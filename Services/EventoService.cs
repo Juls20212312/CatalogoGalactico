@@ -23,68 +23,87 @@ public class EventoService
     }
 
     public string? ValidarEvento(EventoRequest request, int? eventoIdExcluir = null)
+{
+    if (string.IsNullOrWhiteSpace(request.Nombre))
     {
-        if (string.IsNullOrWhiteSpace(request.Nombre))
-        {
-            return "El nombre del evento es obligatorio.";
-        }
-
-        if (request.ParticipantesIds is null ||
-            request.ParticipantesIds.Count < 2)
-        {
-            return "El evento debe tener al menos dos participantes.";
-        }
-
-        if (request.ParticipantesIds.Distinct().Count() !=
-            request.ParticipantesIds.Count)
-        {
-            return "No puede haber participantes repetidos.";
-        }
-
-        foreach (int personajeId in request.ParticipantesIds)
-        {
-            if (!_data.Personajes.Any(p => p.Id == personajeId))
-            {
-                return $"El personaje con ID {personajeId} no existe.";
-            }
-        }
-
-        foreach (int personajeId in request.MuertosIds)
-        {
-            if (!request.ParticipantesIds.Contains(personajeId))
-            {
-                return $"El personaje muerto {personajeId} debe ser participante del evento.";
-            }
-        }
-
-        if (request.GanadorId.HasValue &&
-            !request.ParticipantesIds.Contains(request.GanadorId.Value))
-        {
-            return "El ganador debe formar parte de los participantes.";
-        }
-
-        var eventosAnteriores = _data.Eventos
-            .Where(e =>
-                e.Id != eventoIdExcluir &&
-                e.Fecha < request.Fecha);
-
-        foreach (int personajeId in request.ParticipantesIds)
-        {
-            bool murioAntes = eventosAnteriores.Any(
-                e => e.MuertosIds.Contains(personajeId));
-
-            if (murioAntes)
-            {
-                var personaje = _data.Personajes
-                    .First(p => p.Id == personajeId);
-
-                return $"El personaje {personaje.Nombre} no puede participar porque murió en un evento anterior.";
-            }
-        }
-
-        return null;
+        return "El nombre del evento es obligatorio.";
     }
 
+    if (request.ParticipantesIds is null ||
+        request.ParticipantesIds.Count < 2)
+    {
+        return "El evento debe tener al menos dos participantes.";
+    }
+
+    if (request.ParticipantesIds.Distinct().Count() !=
+        request.ParticipantesIds.Count)
+    {
+        return "No puede haber participantes repetidos.";
+    }
+
+    foreach (int personajeId in request.ParticipantesIds)
+    {
+        if (!_data.Personajes.Any(p => p.Id == personajeId))
+        {
+            return $"El personaje con ID {personajeId} no existe.";
+        }
+    }
+
+    foreach (int personajeId in request.MuertosIds)
+    {
+        if (!request.ParticipantesIds.Contains(personajeId))
+        {
+            return $"El personaje muerto {personajeId} debe ser participante del evento.";
+        }
+    }
+
+    if (request.GanadorId.HasValue &&
+        !request.ParticipantesIds.Contains(request.GanadorId.Value))
+    {
+        return "El ganador debe formar parte de los participantes.";
+    }
+
+    var eventosAnteriores = _data.Eventos
+        .Where(e =>
+            e.Id != eventoIdExcluir &&
+            e.Fecha < request.Fecha);
+
+    foreach (int personajeId in request.ParticipantesIds)
+    {
+        bool murioAntes = eventosAnteriores.Any(
+            e => e.MuertosIds.Contains(personajeId));
+
+        if (murioAntes)
+        {
+            var personaje = _data.Personajes
+                .First(p => p.Id == personajeId);
+
+            return $"El personaje {personaje.Nombre} no puede participar porque murió en un evento anterior.";
+        }
+    }
+
+    var muertos = (request.MuertosIds ?? new List<int>())
+        .Distinct()
+        .ToList();
+
+    foreach (int personajeId in muertos)
+    {
+        bool tieneParticipacionPosterior = _data.Eventos.Any(e =>
+            e.Id != eventoIdExcluir &&
+            e.Fecha > request.Fecha &&
+            e.ParticipantesIds.Contains(personajeId));
+
+        if (tieneParticipacionPosterior)
+        {
+            var personaje = _data.Personajes
+                .First(p => p.Id == personajeId);
+
+            return $"El personaje {personaje.Nombre} no puede morir en este evento porque ya participa en un evento posterior a esta fecha.";
+        }
+    }
+
+    return null;
+}
     public Evento Crear(EventoRequest request)
     {
         int nuevoId = _data.Eventos.Count == 0

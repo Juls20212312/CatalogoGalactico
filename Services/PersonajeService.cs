@@ -59,24 +59,38 @@ public class PersonajeService
         return personaje;
     }
 
-    public bool Actualizar(int id, PersonajeRequest request)
+    public (bool Ok, string? Error, Personaje? Personaje) Actualizar(
+    int id,
+    PersonajeRequest request)
+{
+    var personaje = ObtenerPorId(id);
+
+    if (personaje is null)
     {
-        var personaje = ObtenerPorId(id);
-
-        if (personaje is null)
-        {
-            return false;
-        }
-
-        personaje.Nombre = request.Nombre;
-        personaje.Especie = request.Especie;
-        personaje.Faccion = request.Faccion;
-        personaje.Afiliacion = request.Afiliacion;
-        personaje.Estado = request.Estado;
-        personaje.FuerzaSensitivo = request.FuerzaSensitivo;
-
-        return true;
+        return (false, "NOT_FOUND", null);
     }
+
+    bool tieneMuerteRegistrada = _data.Eventos
+        .Any(e => e.MuertosIds.Contains(id));
+
+    if (tieneMuerteRegistrada &&
+        request.Estado != EstadoPersonaje.Muerto)
+    {
+        return (
+            false,
+            "El estado no puede cambiarse porque existe un evento que registra la muerte del personaje.",
+            null);
+    }
+
+    personaje.Nombre = request.Nombre;
+    personaje.Especie = request.Especie;
+    personaje.Faccion = request.Faccion;
+    personaje.Afiliacion = request.Afiliacion;
+    personaje.Estado = request.Estado;
+    personaje.FuerzaSensitivo = request.FuerzaSensitivo;
+
+    return (true, null, personaje);
+}
 
     public string? Eliminar(int id)
 {

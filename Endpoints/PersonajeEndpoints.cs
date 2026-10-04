@@ -87,27 +87,38 @@ public static class PersonajeEndpoints
         });
 
         group.MapPut("/{id:int}", (
-            int id,
-            PersonajeRequest request,
-            PersonajeService service) =>
+    int id,
+    PersonajeRequest request,
+    PersonajeService service) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Nombre))
+    {
+        return Results.BadRequest(new
         {
-            if (string.IsNullOrWhiteSpace(request.Nombre))
-            {
-                return Results.BadRequest(new
-                {
-                    mensaje = "El nombre es obligatorio."
-                });
-            }
-
-            var actualizado = service.Actualizar(id, request);
-
-            return actualizado
-                ? Results.Ok(service.ObtenerPorId(id))
-                : Results.NotFound(new
-                {
-                    mensaje = "Personaje no encontrado."
-                });
+            mensaje = "El nombre es obligatorio."
         });
+    }
+
+    var resultado = service.Actualizar(id, request);
+
+    if (resultado.Error == "NOT_FOUND")
+    {
+        return Results.NotFound(new
+        {
+            mensaje = "Personaje no encontrado."
+        });
+    }
+
+    if (resultado.Error is not null)
+    {
+        return Results.BadRequest(new
+        {
+            mensaje = resultado.Error
+        });
+    }
+
+    return Results.Ok(resultado.Personaje);
+});
 
         group.MapDelete("/{id:int}", (
     int id,
