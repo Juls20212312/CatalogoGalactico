@@ -22,7 +22,8 @@ public class DataStore
                 Faccion = Faccion.Rebelde,
                 Afiliacion = "Alianza Rebelde",
                 Estado = EstadoPersonaje.Vivo,
-                FuerzaSensitivo = true
+                FuerzaSensitivo = true,
+                Image = "https://www.shutterstock.com/image-photo/portrait-luke-skywalker-light-saber-600w-2437278559.jpg"
             },
 
             new Personaje
@@ -33,7 +34,8 @@ public class DataStore
                 Faccion = Faccion.Rebelde,
                 Afiliacion = "Alianza Rebelde",
                 Estado = EstadoPersonaje.Vivo,
-                FuerzaSensitivo = true
+                FuerzaSensitivo = true,
+                Image = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR6K8uU6qycwKT2d2F3LtA7E3jUCalwgIwGBtofddkQUA&s=10"
             },
 
             new Personaje
@@ -44,7 +46,8 @@ public class DataStore
                 Faccion = Faccion.Rebelde,
                 Afiliacion = "Alianza Rebelde",
                 Estado = EstadoPersonaje.Vivo,
-                FuerzaSensitivo = false
+                FuerzaSensitivo = false,
+                Image = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSu44_JQcN-i7hOreVazfWeglhUtZLvaXARgJ0P4_f7zg&s=10"
             },
 
             new Personaje
@@ -55,7 +58,8 @@ public class DataStore
                 Faccion = Faccion.Imperio,
                 Afiliacion = "Imperio Galáctico",
                 Estado = EstadoPersonaje.Vivo,
-                FuerzaSensitivo = true
+                FuerzaSensitivo = true,
+                Image = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcThnG0pBvATdmEfbFHi1ODwnynman5KIUslJ38NDlWBKQ&s=10"
             },
 
             new Personaje
@@ -66,7 +70,8 @@ public class DataStore
                 Faccion = Faccion.Imperio,
                 Afiliacion = "Imperio Galáctico",
                 Estado = EstadoPersonaje.Vivo,
-                FuerzaSensitivo = true
+                FuerzaSensitivo = true,
+                Image = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRc8PygPceteniartp4JCrmZi-ipOgBmaVLuKncRK91-A&s"
             },
 
             new Personaje
@@ -77,7 +82,8 @@ public class DataStore
                 Faccion = Faccion.Neutral,
                 Afiliacion = "Cazarrecompensas",
                 Estado = EstadoPersonaje.Vivo,
-                FuerzaSensitivo = false
+                FuerzaSensitivo = false,
+                Image = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3Zrwg4jd3LjdvdwxWylA75zcTokIIGHm_bF9mw9hoWQ&s=10"
             }
         });
 
@@ -91,7 +97,7 @@ public class DataStore
                 HabilidadEspecial = "Dominio de la Fuerza",
                 Arma = "Sable de luz",
                 NivelPeligrosidad = 8,
-                ImagenUrl = "https://example.com/luke.jpg"
+                ImagenUrl = "https://www.shutterstock.com/image-photo/portrait-luke-skywalker-light-saber-600w-2437278559.jpg"
             },
 
             new CardPersonaje
@@ -102,7 +108,7 @@ public class DataStore
                 HabilidadEspecial = "Liderazgo Rebelde",
                 Arma = "Bláster",
                 NivelPeligrosidad = 7,
-                ImagenUrl = "https://example.com/leia.jpg"
+                ImagenUrl = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR6K8uU6qycwKT2d2F3LtA7E3jUCalwgIwGBtofddkQUA&s=10"
             },
 
             new CardPersonaje
@@ -113,7 +119,7 @@ public class DataStore
                 HabilidadEspecial = "Piloto experto",
                 Arma = "Bláster pesado",
                 NivelPeligrosidad = 7,
-                ImagenUrl = "https://example.com/han.jpg"
+                ImagenUrl = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSu44_JQcN-i7hOreVazfWeglhUtZLvaXARgJ0P4_f7zg&s=10"
             },
 
             new CardPersonaje
@@ -124,7 +130,7 @@ public class DataStore
                 HabilidadEspecial = "Poder del lado oscuro",
                 Arma = "Sable de luz rojo",
                 NivelPeligrosidad = 10,
-                ImagenUrl = "https://example.com/vader.jpg"
+                ImagenUrl = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcThnG0pBvATdmEfbFHi1ODwnynman5KIUslJ38NDlWBKQ&s=10"
             },
 
             new CardPersonaje
@@ -135,7 +141,7 @@ public class DataStore
                 HabilidadEspecial = "Rayos de la Fuerza",
                 Arma = "Bastón ceremonial",
                 NivelPeligrosidad = 10,
-                ImagenUrl = "https://example.com/palpatine.jpg"
+                ImagenUrl = "https://www.shutterstock.com/image-photo/portrait-luke-skywalker-light-saber-600w-2437278559.jpg"
             },
 
             new CardPersonaje
@@ -146,7 +152,7 @@ public class DataStore
                 HabilidadEspecial = "Caza de objetivos",
                 Arma = "Bláster",
                 NivelPeligrosidad = 8,
-                ImagenUrl = "https://example.com/boba.jpg"
+                ImagenUrl = "https://www.shutterstock.com/image-photo/portrait-luke-skywalker-light-saber-600w-2437278559.jpg"
             }
         });
 

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CatalogoGalactico")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4e4a5952ea784218f1ad14440c5d492177d6d277")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0a102bfb3f2641af51186512698ed225929c72fd")]
 [assembly: System.Reflection.AssemblyProductAttribute("CatalogoGalactico")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CatalogoGalactico")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

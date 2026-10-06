@@ -276,12 +276,16 @@ public class EventoService
             .Where(x => x.Personaje!.Faccion.ToString() == ganador.Faccion)
             .OrderByDescending(x => x.Carta!.Poder)
             .First();
-
+            int ganadorId = ganadorPersonaje.Personaje!.Id;
+            string resultadoTexto = $"La facción {ganador.Faccion} gana la simulación.";
+            evento.GanadorId = ganadorId;
+            evento.Resultado = resultadoTexto;
         return new
         {
             EventoId = evento.Id,
             Evento = evento.Nombre,
-            Resultado = $"La facción {ganador.Faccion} gana la simulación.",
+            Resultado = resultadoTexto,
+            GanadorId = ganadorId,
             GanadorFaccion = ganador.Faccion,
             GanadorPersonaje = ganadorPersonaje.Personaje!.Nombre,
             TotalesPorBando = resultados,

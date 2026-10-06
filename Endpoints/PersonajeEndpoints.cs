@@ -35,7 +35,19 @@ public static class PersonajeEndpoints
 
     return Results.Ok(service.ObtenerRankingPorPoder());
 });
+        group.MapGet("/{id:int}/con-card", (
+    int id,
+    PersonajeService service) =>
+{
+    var ficha = service.ObtenerConCard(id);
 
+    return ficha is null
+        ? Results.NotFound(new
+        {
+            mensaje = "Personaje no encontrado."
+        })
+        : Results.Ok(ficha);
+});
         group.MapGet("/{id:int}", (
             int id,
             PersonajeService service) =>

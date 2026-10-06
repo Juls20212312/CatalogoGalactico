@@ -6,7 +6,8 @@ public record PersonajeRequest(
     Faccion Faccion,
     string Afiliacion,
     EstadoPersonaje Estado,
-    bool FuerzaSensitivo
+    bool FuerzaSensitivo,
+    string Image
 );
 
 public record CardRequest(
