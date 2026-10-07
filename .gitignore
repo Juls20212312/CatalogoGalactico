@@ -1,6 +1,23 @@
+# Build
 bin/
 obj/
+
+# Visual Studio
 .vs/
 .vscode/
+
+# User-specific files
 *.user
 *.suo
+*.userosscache
+*.sln.docstates
+
+# Logs
+*.log
+
+# Test results
+TestResults/
+
+# OS files
+.DS_Store
+Thumbs.db

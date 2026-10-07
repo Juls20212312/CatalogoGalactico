@@ -51,7 +51,8 @@ public class PersonajeService
             Faccion = request.Faccion,
             Afiliacion = request.Afiliacion,
             Estado = request.Estado,
-            FuerzaSensitivo = request.FuerzaSensitivo
+            FuerzaSensitivo = request.FuerzaSensitivo,
+            Image = request.Image
         };
 
         _data.Personajes.Add(personaje);
@@ -88,7 +89,7 @@ public class PersonajeService
     personaje.Afiliacion = request.Afiliacion;
     personaje.Estado = request.Estado;
     personaje.FuerzaSensitivo = request.FuerzaSensitivo;
-
+    personaje.Image = request.Image;
     return (true, null, personaje);
 }
 
@@ -140,7 +141,40 @@ public class PersonajeService
                 Poder = x.Carta!.Poder
             });
     }
+    public object? ObtenerConCard(int id)
+{
+    var personaje = ObtenerPorId(id);
 
+    if (personaje is null)
+    {
+        return null;
+    }
+
+    var carta = _data.Cartas
+        .FirstOrDefault(c => c.PersonajeId == id);
+
+    return new
+    {
+        personaje.Id,
+        personaje.Nombre,
+        personaje.Especie,
+        personaje.Faccion,
+        personaje.Afiliacion,
+        personaje.Estado,
+        personaje.FuerzaSensitivo,
+        personaje.Image,
+
+        Card = carta is null
+            ? null
+            : new
+            {
+                carta.Poder,
+                Peligrosidad = carta.NivelPeligrosidad,
+                carta.HabilidadEspecial,
+                carta.Arma
+            }
+    };
+}
     public IEnumerable<Evento> ObtenerEventos(int personajeId)
     {
         return _data.Eventos
