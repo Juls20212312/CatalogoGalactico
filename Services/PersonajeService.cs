@@ -1,149 +1,279 @@
+
 using CatalogoGalactico.Data;
+using CatalogoGalactico.Dtos;
 using CatalogoGalactico.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace CatalogoGalactico.Services;
 
-public class PersonajeService
+public class PersonajeService : IPersonajeService
 {
-    private readonly DataStore _data;
+    private readonly AppDbContext _db;
 
-    public PersonajeService(DataStore data)
+    private readonly IProteccionService _proteccionService;
+    public PersonajeService(
+    AppDbContext db,
+    IProteccionService proteccionService)
+{
+    _db = db;
+    _proteccionService = proteccionService;
+}
+
+    public async Task<List<PersonajeDto>> ObtenerTodosAsync(
+    Faccion? faccion,
+    bool? fuerzaSensitivo)
+{
+    var consulta = _db.Personajes.AsNoTracking();
+
+    if (faccion.HasValue)
+        consulta = consulta.Where(p => p.Faccion == faccion.Value);
+
+    if (fuerzaSensitivo.HasValue)
+        consulta = consulta.Where(
+            p => p.FuerzaSensitivo == fuerzaSensitivo.Value);
+
+    var personajes = await consulta
+        .OrderBy(p => p.Nombre)
+        .ToListAsync();
+
+    return personajes.Select(ConvertirDto).ToList();
+}
+    public async Task<PersonajeDto?> ObtenerPorIdAsync(int id)
+{
+    var personaje = await _db.Personajes
+        .AsNoTracking()
+        .FirstOrDefaultAsync(p => p.Id == id);
+
+    return personaje == null ? null : ConvertirDto(personaje);
+}
+
+    public async Task<PersonajeDto> CrearAsync(PersonajeCrearDto dto)
+{
+    var personaje = new Personaje
     {
-        _data = data;
-    }
+        Nombre = dto.Nombre,
+        Especie = dto.Especie,
+        Faccion = dto.Faccion,
+        Afiliacion = dto.Afiliacion,
+        Estado = dto.Estado,
+        FuerzaSensitivo = dto.FuerzaSensitivo,
+        UbicacionSecretaCifrada =
+            _proteccionService.Cifrar(dto.UbicacionSecreta)
+    };
 
-    public IEnumerable<Personaje> ObtenerTodos(
-        Faccion? faccion = null,
-        bool? fuerzaSensitivo = null)
-    {
-        IEnumerable<Personaje> personajes = _data.Personajes;
+    _db.Personajes.Add(personaje);
 
-        if (faccion.HasValue)
-        {
-            personajes = personajes.Where(p => p.Faccion == faccion.Value);
-        }
+    await _db.SaveChangesAsync();
 
-        if (fuerzaSensitivo.HasValue)
-        {
-            personajes = personajes.Where(
-                p => p.FuerzaSensitivo == fuerzaSensitivo.Value);
-        }
+    return ConvertirDto(personaje);
+}
 
-        return personajes;
-    }
-
-    public Personaje? ObtenerPorId(int id)
-    {
-        return _data.Personajes.FirstOrDefault(p => p.Id == id);
-    }
-
-    public Personaje Crear(PersonajeRequest request)
-    {
-        int nuevoId = _data.Personajes.Count == 0
-            ? 1
-            : _data.Personajes.Max(p => p.Id) + 1;
-
-        var personaje = new Personaje
-        {
-            Id = nuevoId,
-            Nombre = request.Nombre,
-            Especie = request.Especie,
-            Faccion = request.Faccion,
-            Afiliacion = request.Afiliacion,
-            Estado = request.Estado,
-            FuerzaSensitivo = request.FuerzaSensitivo
-        };
-
-        _data.Personajes.Add(personaje);
-
-        return personaje;
-    }
-
-    public (bool Ok, string? Error, Personaje? Personaje) Actualizar(
+    
+public async Task<ResultadoActualizarPersonaje> ActualizarAsync(
     int id,
-    PersonajeRequest request)
+    PersonajeCrearDto dto)
 {
-    var personaje = ObtenerPorId(id);
+    var personaje = await _db.Personajes
+        .FirstOrDefaultAsync(p => p.Id == id);
 
     if (personaje is null)
     {
-        return (false, "NOT_FOUND", null);
+        return ResultadoActualizarPersonaje.NoEncontrado;
     }
 
-    bool tieneMuerteRegistrada = _data.Eventos
-        .Any(e => e.MuertosIds.Contains(id));
+    bool tieneMuerteRegistrada = await _db.ParticipacionesEventos
+        .AnyAsync(p => p.PersonajeId == id && p.MurioEnEvento);
 
     if (tieneMuerteRegistrada &&
-        request.Estado != EstadoPersonaje.Muerto)
+        dto.Estado != EstadoPersonaje.Muerto)
     {
-        return (
-            false,
-            "El estado no puede cambiarse porque existe un evento que registra la muerte del personaje.",
-            null);
+        return ResultadoActualizarPersonaje.MuerteRegistrada;
     }
-
-    personaje.Nombre = request.Nombre;
-    personaje.Especie = request.Especie;
-    personaje.Faccion = request.Faccion;
-    personaje.Afiliacion = request.Afiliacion;
-    personaje.Estado = request.Estado;
-    personaje.FuerzaSensitivo = request.FuerzaSensitivo;
-
-    return (true, null, personaje);
-}
-
-    public string? Eliminar(int id)
+    if (!dto.FuerzaSensitivo)
 {
-    var personaje = ObtenerPorId(id);
+    bool tieneArmaRestringida = await _db.Armas
+        .AnyAsync(a =>
+            a.RequiereFuerzaSensitivo &&
+            a.Personajes.Any(p => p.Id == id));
 
-    if (personaje is null)
+    if (tieneArmaRestringida)
     {
-        return "NOT_FOUND";
+        return ResultadoActualizarPersonaje.ArmaRequiereFuerza;
+    }
+}
+    personaje.Nombre = dto.Nombre;
+    personaje.Especie = dto.Especie;
+    personaje.Faccion = dto.Faccion;
+    personaje.Afiliacion = dto.Afiliacion;
+    personaje.Estado = dto.Estado;
+    personaje.FuerzaSensitivo = dto.FuerzaSensitivo;
+
+    if (!string.IsNullOrWhiteSpace(dto.UbicacionSecreta))
+    {
+        personaje.UbicacionSecretaCifrada =
+            _proteccionService.Cifrar(dto.UbicacionSecreta);
     }
 
-    bool tieneCarta = _data.Cartas
-        .Any(c => c.PersonajeId == id);
+    await _db.SaveChangesAsync();
 
-    if (tieneCarta)
-    {
-        return "El personaje no puede eliminarse porque tiene una carta asociada.";
-    }
-
-    bool participaEnEvento = _data.Eventos
-        .Any(e => e.ParticipantesIds.Contains(id));
-
-    if (participaEnEvento)
-    {
-        return "El personaje no puede eliminarse porque participa en eventos.";
-    }
-
-    _data.Personajes.Remove(personaje);
-
-    return null;
+    return ResultadoActualizarPersonaje.Actualizado;
 }
 
-    public IEnumerable<object> ObtenerRankingPorPoder()
+
+    public async Task<ResultadoEliminarPersonaje> EliminarAsync(int id)
     {
-        return _data.Personajes
-            .Select(personaje => new
-            {
-                Personaje = personaje,
-                Carta = _data.Cartas.FirstOrDefault(
-                    c => c.PersonajeId == personaje.Id)
-            })
-            .Where(x => x.Carta is not null)
-            .OrderByDescending(x => x.Carta!.Poder)
-            .Select(x => new
-            {
-                x.Personaje.Id,
-                x.Personaje.Nombre,
-                Poder = x.Carta!.Poder
-            });
+        var personaje = await _db.Personajes
+            .FirstOrDefaultAsync(p => p.Id == id);
+
+        if (personaje is null)
+        {
+            return ResultadoEliminarPersonaje.NoEncontrado;
+        }
+
+        bool tieneCarta = await _db.Cartas
+            .AnyAsync(c => c.PersonajeId == id);
+
+        if (tieneCarta)
+        {
+            return ResultadoEliminarPersonaje.TieneCarta;
+        }
+
+        bool tieneEventos = await _db.ParticipacionesEventos
+            .AnyAsync(p => p.PersonajeId == id);
+
+        if (tieneEventos)
+        {
+            return ResultadoEliminarPersonaje.TieneEventos;
+        }
+        bool tieneArmas = await _db.Armas
+            .AnyAsync(a => a.Personajes.Any(p => p.Id == id));
+
+        if (tieneArmas)
+        {
+            return ResultadoEliminarPersonaje.TieneArmas;
+        }
+        _db.Personajes.Remove(personaje);
+
+        await _db.SaveChangesAsync();
+
+        return ResultadoEliminarPersonaje.Eliminado;
     }
 
-    public IEnumerable<Evento> ObtenerEventos(int personajeId)
+    public async Task<List<EventoDto>?> ObtenerEventosAsync(int personajeId)
     {
-        return _data.Eventos
-            .Where(e => e.ParticipantesIds.Contains(personajeId));
+        bool existePersonaje = await _db.Personajes
+            .AnyAsync(p => p.Id == personajeId);
+
+        if (!existePersonaje)
+        {
+            return null;
+        }
+
+        var eventos = await _db.Eventos
+            .AsNoTracking()
+            .Include(e => e.Participaciones)
+            .Where(e => e.Participaciones.Any(
+                p => p.PersonajeId == personajeId))
+            .OrderBy(e => e.Fecha)
+            .ToListAsync();
+
+        return eventos.Select(e => new EventoDto
+        {
+            Id = e.Id,
+            Nombre = e.Nombre,
+            Fecha = e.Fecha,
+            Ubicacion = e.Ubicacion,
+            Descripcion = e.Descripcion,
+            GanadorId = e.GanadorId,
+            Resultado = e.Resultado,
+
+            ParticipantesIds = e.Participaciones
+                .Select(p => p.PersonajeId)
+                .ToList(),
+
+            MuertosIds = e.Participaciones
+                .Where(p => p.MurioEnEvento)
+                .Select(p => p.PersonajeId)
+                .ToList()
+        }).ToList();
     }
+
+    
+public async Task<List<object>> ObtenerRankingPorPoderAsync()
+{
+    var ranking = await (
+        from personaje in _db.Personajes.AsNoTracking()
+        join carta in _db.Cartas.AsNoTracking()
+            on personaje.Id equals carta.PersonajeId
+
+        let bonificacion = personaje.Armas.Sum(
+            a => a.BonificacionPoder)
+
+        orderby carta.Poder + bonificacion descending
+
+        select new
+        {
+            PersonajeId = personaje.Id,
+            Nombre = personaje.Nombre,
+            PoderBase = carta.Poder,
+            BonificacionArmas = bonificacion,
+            Poder = carta.Poder + bonificacion
+        }
+    ).ToListAsync();
+
+    return ranking.Cast<object>().ToList();
+}
+
+public async Task<(bool ExistePersonaje, object? Poder)>
+    ObtenerPoderAsync(int id)
+{
+    var personaje = await _db.Personajes
+        .AsNoTracking()
+        .Include(p => p.CardPersonaje)
+        .Include(p => p.Armas)
+        .FirstOrDefaultAsync(p => p.Id == id);
+
+    if (personaje == null)
+    {
+        return (false, null);
+    }
+
+    if (personaje.CardPersonaje == null)
+    {
+        return (true, null);
+    }
+
+    int poderBase = personaje.CardPersonaje.Poder;
+
+    int bonificacion = personaje.Armas.Sum(
+        a => a.BonificacionPoder);
+
+    int poderEfectivo = poderBase + bonificacion;
+
+    return (true, new
+    {
+        PersonajeId = personaje.Id,
+        Nombre = personaje.Nombre,
+        PoderBase = poderBase,
+        BonificacionArmas = bonificacion,
+        PoderEfectivo = poderEfectivo
+    });
+}
+
+    private PersonajeDto ConvertirDto(Personaje personaje)
+{
+    return new PersonajeDto
+    {
+        Id = personaje.Id,
+        Nombre = personaje.Nombre,
+        Especie = personaje.Especie,
+        Faccion = personaje.Faccion,
+        Afiliacion = personaje.Afiliacion,
+        Estado = personaje.Estado,
+        FuerzaSensitivo = personaje.FuerzaSensitivo,
+        UbicacionSecreta = _proteccionService.Descifrar(
+            personaje.UbicacionSecretaCifrada
+        )
+    };
+}
 }

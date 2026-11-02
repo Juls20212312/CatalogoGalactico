@@ -19,4 +19,5 @@ public class Evento
     public string? Resultado { get; set; }
 
     public List<int> MuertosIds { get; set; } = new();
+    public List<ParticipacionEvento> Participaciones { get; set; } = new();
 }

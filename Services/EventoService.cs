@@ -1,318 +1,516 @@
 using CatalogoGalactico.Data;
+using CatalogoGalactico.Dtos;
 using CatalogoGalactico.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace CatalogoGalactico.Services;
 
-public class EventoService
+public class EventoService : IEventoService
 {
-    private readonly DataStore _data;
+    private readonly AppDbContext _db;
 
-    public EventoService(DataStore data)
+    public EventoService(AppDbContext db)
     {
-        _data = data;
+        _db = db;
     }
 
-    public IEnumerable<Evento> ObtenerTodos()
+    public async Task<List<EventoDto>> ObtenerTodosAsync()
     {
-        return _data.Eventos;
+        var eventos = await _db.Eventos
+            .AsNoTracking()
+            .Include(e => e.Participaciones)
+            .OrderBy(e => e.Fecha)
+            .ToListAsync();
+
+        return eventos.Select(ConvertirDto).ToList();
     }
 
-    public Evento? ObtenerPorId(int id)
+    public async Task<EventoDto?> ObtenerPorIdAsync(int id)
     {
-        return _data.Eventos.FirstOrDefault(e => e.Id == id);
+        var evento = await _db.Eventos
+            .AsNoTracking()
+            .Include(e => e.Participaciones)
+            .FirstOrDefaultAsync(e => e.Id == id);
+
+        return evento == null ? null : ConvertirDto(evento);
     }
 
-    public string? ValidarEvento(EventoRequest request, int? eventoIdExcluir = null)
-{
-    if (string.IsNullOrWhiteSpace(request.Nombre))
+    public async Task<(EventoDto? Evento, string? Error)> CrearAsync(
+        EventoCrearDto dto)
     {
-        return "El nombre del evento es obligatorio.";
-    }
+        string? error = await ValidarEventoAsync(dto);
 
-    if (request.ParticipantesIds is null ||
-        request.ParticipantesIds.Count < 2)
-    {
-        return "El evento debe tener al menos dos participantes.";
-    }
-
-    if (request.ParticipantesIds.Distinct().Count() !=
-        request.ParticipantesIds.Count)
-    {
-        return "No puede haber participantes repetidos.";
-    }
-
-    foreach (int personajeId in request.ParticipantesIds)
-    {
-        if (!_data.Personajes.Any(p => p.Id == personajeId))
+        if (error != null)
         {
-            return $"El personaje con ID {personajeId} no existe.";
+            return (null, error);
         }
-    }
 
-    foreach (int personajeId in request.MuertosIds)
-    {
-        if (!request.ParticipantesIds.Contains(personajeId))
-        {
-            return $"El personaje muerto {personajeId} debe ser participante del evento.";
-        }
-    }
-
-    if (request.GanadorId.HasValue &&
-        !request.ParticipantesIds.Contains(request.GanadorId.Value))
-    {
-        return "El ganador debe formar parte de los participantes.";
-    }
-
-    var eventosAnteriores = _data.Eventos
-        .Where(e =>
-            e.Id != eventoIdExcluir &&
-            e.Fecha < request.Fecha);
-
-    foreach (int personajeId in request.ParticipantesIds)
-    {
-        bool murioAntes = eventosAnteriores.Any(
-            e => e.MuertosIds.Contains(personajeId));
-
-        if (murioAntes)
-        {
-            var personaje = _data.Personajes
-                .First(p => p.Id == personajeId);
-
-            return $"El personaje {personaje.Nombre} no puede participar porque murió en un evento anterior.";
-        }
-    }
-
-    var muertos = (request.MuertosIds ?? new List<int>())
-        .Distinct()
-        .ToList();
-
-    foreach (int personajeId in muertos)
-    {
-        bool tieneParticipacionPosterior = _data.Eventos.Any(e =>
-            e.Id != eventoIdExcluir &&
-            e.Fecha > request.Fecha &&
-            e.ParticipantesIds.Contains(personajeId));
-
-        if (tieneParticipacionPosterior)
-        {
-            var personaje = _data.Personajes
-                .First(p => p.Id == personajeId);
-
-            return $"El personaje {personaje.Nombre} no puede morir en este evento porque ya participa en un evento posterior a esta fecha.";
-        }
-    }
-
-    return null;
-}
-    public Evento Crear(EventoRequest request)
-    {
-        int nuevoId = _data.Eventos.Count == 0
-            ? 1
-            : _data.Eventos.Max(e => e.Id) + 1;
+        await using var transaccion =
+            await _db.Database.BeginTransactionAsync();
 
         var evento = new Evento
         {
-            Id = nuevoId,
-            Nombre = request.Nombre,
-            Fecha = request.Fecha,
-            Ubicacion = request.Ubicacion,
-            Descripcion = request.Descripcion,
-            ParticipantesIds = request.ParticipantesIds.ToList(),
-            GanadorId = request.GanadorId,
-            Resultado = request.Resultado,
-            MuertosIds = request.MuertosIds.ToList()
+            Nombre = dto.Nombre,
+            Fecha = dto.Fecha,
+            Ubicacion = dto.Ubicacion,
+            Descripcion = dto.Descripcion,
+            GanadorId = dto.GanadorId,
+            Resultado = dto.Resultado
         };
 
-        _data.Eventos.Add(evento);
+        _db.Eventos.Add(evento);
 
-        ActualizarEstadosPorMuertes(evento);
+        await _db.SaveChangesAsync();
 
-        return evento;
+        var muertos = dto.MuertosIds ?? new List<int>();
+
+        foreach (int personajeId in dto.ParticipantesIds)
+        {
+            _db.ParticipacionesEventos.Add(new ParticipacionEvento
+            {
+                EventoId = evento.Id,
+                PersonajeId = personajeId,
+                MurioEnEvento = muertos.Contains(personajeId)
+            });
+        }
+        await _db.SaveChangesAsync();
+        await RecalcularEstadosAsync(dto.ParticipantesIds);
+
+        await _db.SaveChangesAsync();
+        await transaccion.CommitAsync();
+
+        await _db.Entry(evento)
+            .Collection(e => e.Participaciones)
+            .LoadAsync();
+
+        return (ConvertirDto(evento), null);
     }
 
-    public bool Actualizar(int id, EventoRequest request)
+    public async Task<(bool Actualizado, string? Error)> ActualizarAsync(
+        int id,
+        EventoCrearDto dto)
     {
-        var evento = ObtenerPorId(id);
+        var evento = await _db.Eventos
+            .Include(e => e.Participaciones)
+            .FirstOrDefaultAsync(e => e.Id == id);
 
-        if (evento is null)
+        if (evento == null)
+        {
+            return (false, "El evento no existe.");
+        }
+
+        string? error = await ValidarEventoAsync(dto, id);
+
+        if (error != null)
+        {
+            return (false, error);
+        }
+
+        var personajesAfectados = evento.Participaciones
+            .Select(p => p.PersonajeId)
+            .Union(dto.ParticipantesIds)
+            .Distinct()
+            .ToList();
+        var muertosAntes = evento.Participaciones
+            .Where(p => p.MurioEnEvento)
+            .Select(p => p.PersonajeId)
+            .ToList();
+        await using var transaccion =
+            await _db.Database.BeginTransactionAsync();
+
+        _db.ParticipacionesEventos.RemoveRange(evento.Participaciones);
+
+        await _db.SaveChangesAsync();
+
+        evento.Nombre = dto.Nombre;
+        evento.Fecha = dto.Fecha;
+        evento.Ubicacion = dto.Ubicacion;
+        evento.Descripcion = dto.Descripcion;
+        evento.GanadorId = dto.GanadorId;
+        evento.Resultado = dto.Resultado;
+        var muertos = dto.MuertosIds ?? new List<int>();
+
+        foreach (int personajeId in dto.ParticipantesIds)
+        {
+            _db.ParticipacionesEventos.Add(new ParticipacionEvento
+            {
+                EventoId = evento.Id,
+                PersonajeId = personajeId,
+                MurioEnEvento = muertos.Contains(personajeId)
+            });
+        }
+
+        await _db.SaveChangesAsync();
+
+        await RecalcularEstadosAsync(personajesAfectados, muertosAntes);
+        await transaccion.CommitAsync();
+
+        return (true, null);
+    }
+
+    public async Task<bool> EliminarAsync(int id)
+    {
+        var evento = await _db.Eventos
+            .Include(e => e.Participaciones)
+            .FirstOrDefaultAsync(e => e.Id == id);
+
+        if (evento == null)
         {
             return false;
         }
 
-        evento.Nombre = request.Nombre;
-        evento.Fecha = request.Fecha;
-        evento.Ubicacion = request.Ubicacion;
-        evento.Descripcion = request.Descripcion;
-        evento.ParticipantesIds = request.ParticipantesIds.ToList();
-        evento.GanadorId = request.GanadorId;
-        evento.Resultado = request.Resultado;
-        evento.MuertosIds = request.MuertosIds.ToList();
+        var personajesAfectados = evento.Participaciones
+            .Select(p => p.PersonajeId)
+            .Distinct()
+            .ToList();
+        var muertosAntes = evento.Participaciones
+            .Where(p => p.MurioEnEvento)
+            .Select(p => p.PersonajeId)
+            .ToList();
+        await using var transaccion =
+            await _db.Database.BeginTransactionAsync();
 
-        ActualizarEstadosGenerales();
+        _db.ParticipacionesEventos.RemoveRange(evento.Participaciones);
+        _db.Eventos.Remove(evento);
 
-        return true;
-    }
+        await _db.SaveChangesAsync();
 
-    public bool Eliminar(int id)
-    {
-        var evento = ObtenerPorId(id);
+        await RecalcularEstadosAsync(personajesAfectados, muertosAntes);
 
-        if (evento is null)
-        {
-            return false;
-        }
-
-        _data.Eventos.Remove(evento);
-
-        ActualizarEstadosGenerales();
+        await _db.SaveChangesAsync();
+        await transaccion.CommitAsync();
 
         return true;
     }
 
-    public IEnumerable<Evento> ObtenerEventosDePersonaje(int personajeId)
+    public async Task<List<EventoDto>?> ObtenerEventosDePersonajeAsync(
+        int personajeId)
     {
-        return _data.Eventos
-            .Where(e => e.ParticipantesIds.Contains(personajeId));
-    }
+        bool existePersonaje = await _db.Personajes
+            .AnyAsync(p => p.Id == personajeId);
 
-    public object? ObtenerMvp(int eventoId)
-    {
-        var evento = ObtenerPorId(eventoId);
-
-        if (evento is null)
+        if (!existePersonaje)
         {
             return null;
         }
 
-        var participantesConCarta = evento.ParticipantesIds
-            .Select(personajeId => new
-            {
-                Personaje = _data.Personajes
-                    .FirstOrDefault(p => p.Id == personajeId),
+        var eventos = await _db.Eventos
+            .AsNoTracking()
+            .Include(e => e.Participaciones)
+            .Where(e => e.Participaciones.Any(
+                p => p.PersonajeId == personajeId))
+            .OrderBy(e => e.Fecha)
+            .ToListAsync();
 
-                Carta = _data.Cartas
-                    .FirstOrDefault(c => c.PersonajeId == personajeId)
-            })
-            .Where(x => x.Personaje is not null && x.Carta is not null)
-            .OrderByDescending(x => x.Carta!.Poder)
+        return eventos.Select(ConvertirDto).ToList();
+    }
+
+    
+public async Task<object?> ObtenerMvpAsync(int eventoId)
+{
+    var evento = await _db.Eventos
+        .AsNoTracking()
+        .Include(e => e.Participaciones)
+            .ThenInclude(p => p.Personaje)
+                .ThenInclude(p => p.CardPersonaje)
+        .Include(e => e.Participaciones)
+            .ThenInclude(p => p.Personaje)
+                .ThenInclude(p => p.Armas)
+        .AsSplitQuery()
+        .FirstOrDefaultAsync(e => e.Id == eventoId);
+
+    if (evento == null)
+    {
+        return null;
+    }
+
+    if (evento.Participaciones.Count == 0 ||
+        evento.Participaciones.Any(p =>
+            p.Personaje.CardPersonaje == null))
+    {
+        return null;
+    }
+
+    var mvp = evento.Participaciones
+        .Select(p =>
+        {
+            var personaje = p.Personaje;
+
+            int poderBase = personaje.CardPersonaje!.Poder;
+
+            int bonificacionArmas = personaje.Armas.Sum(
+                a => a.BonificacionPoder);
+
+            return new
+            {
+                PersonajeId = personaje.Id,
+                Nombre = personaje.Nombre,
+                PoderBase = poderBase,
+                BonificacionArmas = bonificacionArmas,
+                PoderEfectivo = poderBase + bonificacionArmas
+            };
+        })
+        .OrderByDescending(p => p.PoderEfectivo)
+        .ThenBy(p => p.PersonajeId)
+        .First();
+
+    return mvp;
+}
+
+
+    
+public async Task<(object? Resultado, string? Error)> SimularAsync(
+    int eventoId)
+{
+    var evento = await _db.Eventos
+        .AsNoTracking()
+        .Include(e => e.Participaciones)
+            .ThenInclude(p => p.Personaje)
+                .ThenInclude(p => p.CardPersonaje)
+        .Include(e => e.Participaciones)
+            .ThenInclude(p => p.Personaje)
+                .ThenInclude(p => p.Armas)
+        .AsSplitQuery()
+        .FirstOrDefaultAsync(e => e.Id == eventoId);
+
+    if (evento == null)
+    {
+        return (null, "El evento no existe.");
+    }
+
+    if (evento.Participaciones.Count < 2)
+    {
+        return (null,
+            "Se necesitan al menos dos participantes.");
+    }
+
+    if (evento.Participaciones.Any(p =>
+        p.Personaje.CardPersonaje == null))
+    {
+        return (null,
+            "Todos los participantes deben tener una carta registrada.");
+    }
+
+    var participantes = evento.Participaciones
+        .Select(p =>
+        {
+            var personaje = p.Personaje;
+
+            int poderBase = personaje.CardPersonaje!.Poder;
+
+            int bonificacionArmas = personaje.Armas.Sum(
+                a => a.BonificacionPoder);
+
+            return new
+            {
+                PersonajeId = personaje.Id,
+                Nombre = personaje.Nombre,
+                Faccion = personaje.Faccion,
+                PoderBase = poderBase,
+                BonificacionArmas = bonificacionArmas,
+                PoderEfectivo = poderBase + bonificacionArmas
+            };
+        })
+        .ToList();
+
+    var facciones = participantes
+        .GroupBy(p => p.Faccion)
+        .ToList();
+
+    if (facciones.Count < 2)
+    {
+        return (null,
+            "Se necesitan al menos dos facciones para realizar la simulación.");
+    }
+
+    var resultados = facciones.Select(grupo =>
+    {
+        int poderBase = grupo.Sum(p => p.PoderBase);
+
+        int bonificacionArmas = grupo.Sum(
+            p => p.BonificacionArmas);
+
+        int poderEfectivo = poderBase + bonificacionArmas;
+
+        double factor = 0.90 +
+            (Random.Shared.NextDouble() * 0.20);
+
+        double poderFinal = poderEfectivo * factor;
+
+        return new
+        {
+            Faccion = grupo.Key,
+            PoderBase = poderBase,
+            BonificacionArmas = bonificacionArmas,
+            PoderEfectivo = poderEfectivo,
+            Factor = Math.Round(factor, 2),
+            PoderFinal = Math.Round(poderFinal, 2)
+        };
+    }).ToList();
+
+    var ganadora = resultados
+        .OrderByDescending(r => r.PoderFinal)
+        .First();
+
+    bool empate = resultados.Count(
+        r => r.PoderFinal == ganadora.PoderFinal) > 1;
+
+    var personajeDestacado = empate
+        ? null
+        : participantes
+            .Where(p => p.Faccion == ganadora.Faccion)
+            .OrderByDescending(p => p.PoderEfectivo)
             .FirstOrDefault();
 
-        if (participantesConCarta is null)
+    var resultado = new
+    {
+        EventoId = evento.Id,
+        NombreEvento = evento.Nombre,
+        Participantes = participantes,
+        FaccionGanadora = empate
+            ? "Empate"
+            : ganadora.Faccion.ToString(),
+        PersonajeDestacado = personajeDestacado?.Nombre,
+        PoderesPorFaccion = resultados,
+        Motivo = empate
+            ? "Las facciones empataron en el poder final calculado."
+            : $"La facción {ganadora.Faccion} obtuvo el mayor poder después de aplicar las bonificaciones y el factor aleatorio."
+    };
+
+    return (resultado, null);
+}
+
+
+    private async Task<string?> ValidarEventoAsync(
+        EventoCrearDto dto,
+        int? eventoActualId = null)
+    {
+        var participantes = dto.ParticipantesIds ?? new List<int>();
+        var muertos = dto.MuertosIds ?? new List<int>();
+
+        if (string.IsNullOrWhiteSpace(dto.Nombre))
         {
-            return null;
+            return "El nombre del evento es obligatorio.";
         }
 
-        return new
+        if (participantes.Count < 2)
         {
-            EventoId = evento.Id,
-            Evento = evento.Nombre,
-            PersonajeId = participantesConCarta.Personaje!.Id,
-            Personaje = participantesConCarta.Personaje.Nombre,
-            Poder = participantesConCarta.Carta!.Poder,
-            Criterio = "Mayor poder de carta entre los participantes."
+            return "El evento necesita al menos dos participantes.";
+        }
+
+        if (participantes.Distinct().Count() != participantes.Count)
+        {
+            return "No se permiten participantes repetidos.";
+        }
+
+        if (muertos.Distinct().Count() != muertos.Count)
+        {
+            return "No se permiten personajes repetidos en la lista de muertos.";
+        }
+
+        int personajesExistentes = await _db.Personajes
+            .CountAsync(p => participantes.Contains(p.Id));
+
+        if (personajesExistentes != participantes.Count)
+        {
+            return "Uno o más participantes no existen.";
+        }
+
+        if (muertos.Any(id => !participantes.Contains(id)))
+        {
+            return "Los personajes muertos deben formar parte del evento.";
+        }
+
+        if (dto.GanadorId.HasValue &&
+            !participantes.Contains(dto.GanadorId.Value))
+        {
+            return "El ganador debe ser uno de los participantes.";
+        }
+
+        var muerteAnterior = await (
+            from participacion in _db.ParticipacionesEventos
+            join evento in _db.Eventos
+                on participacion.EventoId equals evento.Id
+            where participantes.Contains(participacion.PersonajeId)
+                && participacion.MurioEnEvento
+                && evento.Fecha <= dto.Fecha
+                && (!eventoActualId.HasValue ||
+                    evento.Id != eventoActualId.Value)
+            select participacion
+        ).AnyAsync();
+
+        if (muerteAnterior)
+        {
+            return "Un personaje que ya murió no puede participar en un evento posterior.";
+        }
+
+        var participacionPosterior = await (
+            from participacion in _db.ParticipacionesEventos
+            join evento in _db.Eventos
+                on participacion.EventoId equals evento.Id
+            where muertos.Contains(participacion.PersonajeId)
+                && evento.Fecha > dto.Fecha
+                && (!eventoActualId.HasValue ||
+                    evento.Id != eventoActualId.Value)
+            select participacion
+        ).AnyAsync();
+
+        if (participacionPosterior)
+        {
+            return "Un personaje que muere en este evento no puede tener participaciones posteriores.";
+        }
+
+        return null;
+    }
+
+    
+private async Task RecalcularEstadosAsync(
+    List<int> personajesIds,
+    List<int>? muertosAntes = null)
+{
+    var personajes = await _db.Personajes
+        .Where(p => personajesIds.Contains(p.Id))
+        .ToListAsync();
+
+    foreach (var personaje in personajes)
+    {
+        bool tieneMuerteRegistrada = await _db.ParticipacionesEventos
+            .AnyAsync(p =>
+                p.PersonajeId == personaje.Id &&
+                p.MurioEnEvento);
+
+        if (tieneMuerteRegistrada)
+        {
+            personaje.Estado = EstadoPersonaje.Muerto;
+        }
+        else if (muertosAntes != null &&
+                 muertosAntes.Contains(personaje.Id) &&
+                 personaje.Estado == EstadoPersonaje.Muerto)
+        {
+            personaje.Estado = EstadoPersonaje.Vivo;
+        }
+    }
+}
+
+
+    private static EventoDto ConvertirDto(Evento evento)
+    {
+        return new EventoDto
+        {
+            Id = evento.Id,
+            Nombre = evento.Nombre,
+            Fecha = evento.Fecha,
+            Ubicacion = evento.Ubicacion,
+            Descripcion = evento.Descripcion,
+            ParticipantesIds = evento.Participaciones
+                .Select(p => p.PersonajeId)
+                .ToList(),
+            MuertosIds = evento.Participaciones
+                .Where(p => p.MurioEnEvento)
+                .Select(p => p.PersonajeId)
+                .ToList(),
+            GanadorId = evento.GanadorId,
+            Resultado = evento.Resultado
         };
-    }
-
-    public object? Simular(int eventoId)
-    {
-        var evento = ObtenerPorId(eventoId);
-
-        if (evento is null)
-        {
-            return null;
-        }
-
-        var datos = evento.ParticipantesIds
-            .Select(personajeId => new
-            {
-                Personaje = _data.Personajes
-                    .FirstOrDefault(p => p.Id == personajeId),
-
-                Carta = _data.Cartas
-                    .FirstOrDefault(c => c.PersonajeId == personajeId)
-            })
-            .ToList();
-
-        if (datos.Any(x => x.Personaje is null || x.Carta is null))
-        {
-            throw new InvalidOperationException(
-                "Todos los participantes deben tener personaje y carta.");
-        }
-
-        var bandos = datos
-            .GroupBy(x => x.Personaje!.Faccion)
-            .ToList();
-
-        if (bandos.Count < 2)
-        {
-            throw new InvalidOperationException(
-                "La simulación necesita participantes de al menos dos facciones.");
-        }
-
-        var resultados = bandos
-            .Select(bando =>
-            {
-                int poderBase = bando.Sum(x => x.Carta!.Poder);
-
-                double factor = 0.90 +
-                    Random.Shared.NextDouble() * 0.20;
-
-                double poderFinal = poderBase * factor;
-
-                return new
-                {
-                    Faccion = bando.Key.ToString(),
-                    PoderBase = poderBase,
-                    FactorAleatorio = Math.Round(factor, 2),
-                    PoderFinal = Math.Round(poderFinal, 2)
-                };
-            })
-            .OrderByDescending(x => x.PoderFinal)
-            .ToList();
-
-        var ganador = resultados.First();
-
-        var ganadorPersonaje = datos
-            .Where(x => x.Personaje!.Faccion.ToString() == ganador.Faccion)
-            .OrderByDescending(x => x.Carta!.Poder)
-            .First();
-
-        return new
-        {
-            EventoId = evento.Id,
-            Evento = evento.Nombre,
-            Resultado = $"La facción {ganador.Faccion} gana la simulación.",
-            GanadorFaccion = ganador.Faccion,
-            GanadorPersonaje = ganadorPersonaje.Personaje!.Nombre,
-            TotalesPorBando = resultados,
-            Criterio = "Se suma el poder de las cartas por facción y se aplica un factor aleatorio acotado entre 0.90 y 1.10."
-        };
-    }
-
-    private void ActualizarEstadosPorMuertes(Evento evento)
-    {
-        foreach (int personajeId in evento.MuertosIds)
-        {
-            var personaje = _data.Personajes
-                .FirstOrDefault(p => p.Id == personajeId);
-
-            if (personaje is not null)
-            {
-                personaje.Estado = EstadoPersonaje.Muerto;
-            }
-        }
-    }
-
-    private void ActualizarEstadosGenerales()
-    {
-        foreach (var personaje in _data.Personajes)
-        {
-            bool murio = _data.Eventos.Any(
-                e => e.MuertosIds.Contains(personaje.Id));
-
-            personaje.Estado = murio
-                ? EstadoPersonaje.Muerto
-                : EstadoPersonaje.Vivo;
-        }
     }
 }

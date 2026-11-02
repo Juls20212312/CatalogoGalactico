@@ -15,4 +15,5 @@ public class CardPersonaje
     public int NivelPeligrosidad { get; set; }
 
     public string ImagenUrl { get; set; } = string.Empty;
+    public Personaje Personaje { get; set; } = null!;
 }
