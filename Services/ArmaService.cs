@@ -52,6 +52,26 @@ public class ArmaService : IArmaService
 
         return ConvertirDto(arma);
     }
+    
+public async Task<List<ArmaDto>?> ObtenerPorPersonajeAsync(int personajeId)
+{
+    var existe = await _db.Personajes
+        .AnyAsync(p => p.Id == personajeId);
+
+    if (!existe)
+    {
+        return null;
+    }
+
+    var armas = await _db.Armas
+        .AsNoTracking()
+        .Include(a => a.Personajes)
+        .Where(a => a.Personajes.Any(p => p.Id == personajeId))
+        .OrderBy(a => a.Nombre)
+        .ToListAsync();
+
+    return armas.Select(ConvertirDto).ToList();
+}
 
     public async Task<ResultadoCambioArma> ActualizarAsync(
     int id,

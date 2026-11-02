@@ -163,4 +163,37 @@ public async Task<IActionResult> Eliminar(int id)
             _ => BadRequest()
         };
     }
+    
+[HttpGet("/api/personajes/{personajeId:int}/armas")]
+public async Task<ActionResult<List<ArmaDto>>> ObtenerArmasDePersonaje(int personajeId)
+{
+    var armas = await _armaService.ObtenerPorPersonajeAsync(personajeId);
+
+    if (armas == null)
+    {
+        return NotFound(new
+        {
+            mensaje = "El personaje no existe."
+        });
+    }
+
+    return Ok(armas);
+}
+
+[HttpPost("/api/personajes/{personajeId:int}/armas")]
+public Task<IActionResult> AsignarDesdePersonaje(
+    int personajeId,
+    [FromBody] ArmaAsignarDto dto)
+{
+    return Asignar(dto.ArmaId, personajeId);
+}
+
+[HttpDelete("/api/personajes/{personajeId:int}/armas/{armaId:int}")]
+public Task<IActionResult> DesasignarDesdePersonaje(
+    int personajeId,
+    int armaId)
+{
+    return Desasignar(armaId, personajeId);
+}
+
 }

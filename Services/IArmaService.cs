@@ -34,7 +34,7 @@ public interface IArmaService
     Task<ArmaDto?> ObtenerPorIdAsync(int id);
 
     Task<ArmaDto> CrearAsync(ArmaCrearDto dto);
-
+    Task<List<ArmaDto>?> ObtenerPorPersonajeAsync(int personajeId);
     Task<ResultadoCambioArma> ActualizarAsync(
         int id,
         ArmaCrearDto dto
